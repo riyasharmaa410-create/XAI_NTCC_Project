@@ -375,7 +375,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/5_📚_About_Project.py",
+       "5_📚_About_Project.py",
         title="About Project",
         icon="📚"
     ),
