@@ -381,7 +381,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/6_📂_Dataset_Upload.py",
+        "6_📂_Dataset_Upload.py",
         title="Dataset Upload",
         icon="📂"
     )
