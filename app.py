@@ -369,7 +369,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/4_📊_Model_Performance.py",
+        "4_📊_Model_Performance.py",
         title="Model Performance",
         icon="📊"
     ),
