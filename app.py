@@ -363,7 +363,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/3_🧪_What_If_Analysis.py",
+        "3_🧪_What_If_Analysis.py",
         title="What-If Analysis",
         icon="🧪"
     ),
