@@ -351,7 +351,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/1_🔮_Prediction.py",
+        "1_🔮_Prediction.py",
         title="Prediction",
         icon="🔮"
     ),
