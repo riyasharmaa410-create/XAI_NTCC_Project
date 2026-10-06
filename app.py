@@ -357,7 +357,7 @@ pages = [
     ),
 
     st.Page(
-        "pages/2_🔍_SHAP_Explanation.py",
+        "2_🔍_SHAP_Explanation.py",
         title="Feature Explanation",
         icon="🔍"
     ),
