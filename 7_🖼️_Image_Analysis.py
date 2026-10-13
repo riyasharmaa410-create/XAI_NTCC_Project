@@ -1,4 +1,3 @@
-
 import streamlit as st
 import torch
 import torchvision.models as models
@@ -12,7 +11,7 @@ from torchvision.models import ResNet18_Weights
 st.set_page_config(
     page_title="Image Analysis | XAI",
     page_icon="🖼️",
-    layout="wide"
+    layout="wide",
 )
 
 
@@ -65,9 +64,12 @@ def generate_gradcam(model, input_tensor, class_index):
 
         cam = torch.nn.functional.interpolate(
             cam,
-            size=(input_tensor.shape[2], input_tensor.shape[3]),
+            size=(
+                input_tensor.shape[2],
+                input_tensor.shape[3],
+            ),
             mode="bilinear",
-            align_corners=False
+            align_corners=False,
         )
 
         cam = cam[0, 0].detach().cpu().numpy()
@@ -88,6 +90,7 @@ def generate_gradcam(model, input_tensor, class_index):
 
 
 st.title("🖼️ Image Analysis")
+
 st.write(
     "Classify an image, compare the top predictions, and visualize "
     "which image regions influenced the selected prediction."
@@ -101,9 +104,8 @@ st.info(
 uploaded_image = st.file_uploader(
     "Upload an image",
     type=["png", "jpg", "jpeg"],
-    help="Choose a clear image of a common object."
+    help="Choose a clear image of a common object.",
 )
-
 
 if uploaded_image is not None:
     try:
@@ -113,22 +115,23 @@ if uploaded_image is not None:
         st.image(
             image,
             caption="Original uploaded image",
-            width="stretch"
+            width="stretch",
         )
 
         with st.spinner(
             "Loading the model and analyzing your image..."
         ):
             model, weights = load_model()
+            input_tensor = (
+                weights.transforms()(image).unsqueeze(0)
+            )
 
-            input_tensor = weights.transforms()(image).unsqueeze(0)
-
-            # Run image classification
+            # Classify the image
             with torch.no_grad():
                 output = model(input_tensor)
                 probabilities = torch.softmax(output, dim=1)[0]
 
-            # Find the five most likely classes
+            # Get the top five predictions
             top5_probabilities, top5_indices = torch.topk(
                 probabilities, k=5
             )
@@ -145,42 +148,36 @@ if uploaded_image is not None:
             for rank, (probability, index) in enumerate(
                 zip(
                     top5_probabilities.tolist(),
-                    top5_indices.tolist()
+                    top5_indices.tolist(),
                 ),
-                start=1
+                start=1,
             ):
                 top5_predictions.append({
                     "Rank": rank,
                     "Class": weights.meta["categories"][int(index)],
                     "Confidence (%)": round(
                         float(probability) * 100, 2
-                    )
+                    ),
                 })
 
-            # Generate Grad-CAM for the highest-ranked class
+            # Generate Grad-CAM for the top prediction
             cam = generate_gradcam(
                 model,
                 input_tensor,
-                class_index
+                class_index,
             )
 
         st.subheader("🔮 Prediction")
 
-        st.success(
-            f"Predicted class: **{class_name}**"
-        )
-
-        st.metric(
-            "Model confidence",
-            f"{confidence:.2f}%"
-        )
+        st.success(f"Predicted class: **{class_name}**")
+        st.metric("Model confidence", f"{confidence:.2f}%")
 
         st.subheader("📊 Top 5 Predictions")
 
         st.dataframe(
             top5_predictions,
             hide_index=True,
-            width="stretch"
+            width="stretch",
         )
 
         st.caption(
@@ -189,14 +186,12 @@ if uploaded_image is not None:
         )
 
         st.divider()
-
         st.subheader("🔍 Grad-CAM Visual Explanation")
 
         st.write(
-            "The heatmap highlights image regions that influenced "
-            "the selected class score. Redder or brighter areas "
-            "typically indicate stronger relative activation in "
-            "this visualization."
+            "The heatmap highlights image regions associated with "
+            "the selected class score. Brighter areas indicate "
+            "stronger relative activation in this visualization."
         )
 
         col1, col2 = st.columns(2)
@@ -205,7 +200,7 @@ if uploaded_image is not None:
             st.image(
                 image,
                 caption="Original image",
-                width="stretch"
+                width="stretch",
             )
 
         with col2:
@@ -217,9 +212,8 @@ if uploaded_image is not None:
                 cmap="jet",
                 alpha=0.45,
                 vmin=0,
-                vmax=1
+                vmax=1,
             )
-
             ax.axis("off")
 
             st.pyplot(fig)
