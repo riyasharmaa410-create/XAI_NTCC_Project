@@ -76,8 +76,25 @@ if uploaded_image is not None:
             forward_handle.remove()
             backward_handle.remove()
 
-            confidence = probabilities[0, class_index].item() * 100
-            class_name = weights.meta["categories"][class_index]
+            
+confidence = probabilities[0, class_index].item() * 100
+class_name = weights.meta["categories"][class_index]
+
+top5_probabilities, top5_indices = torch.topk(
+    probabilities[0], k=5
+)
+
+top5_predictions = [
+    {
+        "Class": weights.meta["categories"][int(index)],
+        "Confidence (%)": round(float(probability) * 100, 2)
+    }
+    for probability, index in zip(
+        top5_probabilities.tolist(),
+        top5_indices.tolist()
+    )
+]
+
 
             feature_maps = activations["value"]
             grads = gradients["value"]
