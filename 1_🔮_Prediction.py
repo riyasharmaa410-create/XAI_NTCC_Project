@@ -3,34 +3,50 @@ import streamlit as st
 import pandas as pd
 import joblib
 import os
+import numpy as np
 
 st.title("🔮 Prediction")
 
 st.write(
     """
-    Select a test sample and see how the trained machine learning
-    model classifies it. When an uploaded dataset has been trained,
-    this page automatically uses that uploaded model.
+    Select a test sample and see the prediction made by the active
+    machine learning model. When a model has been trained on an
+    uploaded dataset, this page uses that model automatically.
     """
 )
 
-# Check whether an uploaded model is available
+# ============================================================
+# CHECK FOR A TRAINED UPLOADED-DATASET MODEL
+# ============================================================
+
+uploaded_results = st.session_state.get("dataset_model")
+
 uploaded_model_available = (
-    st.session_state.get("model_trained", False)
-    and "uploaded_model" in st.session_state
+    st.session_state.get("dataset_model_trained", False)
+    and uploaded_results is not None
+    and isinstance(uploaded_results, dict)
+    and "model" in uploaded_results
+    and "X_test" in uploaded_results
+    and "y_test" in uploaded_results
 )
 
-# Load the active model
 if uploaded_model_available:
-    model = st.session_state["uploaded_model"]
-    X_test = st.session_state["uploaded_X_test"]
-    y_test = st.session_state["uploaded_y_test"]
-    feature_names = st.session_state["uploaded_feature_names"]
-    target_column = st.session_state["uploaded_target_column"]
-    class_names = st.session_state["uploaded_classes"]
+
+    model = uploaded_results["model"]
+    X_test = uploaded_results["X_test"]
+    y_test = uploaded_results["y_test"]
+    feature_names = uploaded_results["feature_names"]
+    target_column = uploaded_results["target"]
+    task = uploaded_results["task"]
+
     model_source = "Uploaded Dataset"
 
 else:
+
+    # ========================================================
+    # LOAD ORIGINAL MODEL
+    # ========================================================
+
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     MODEL_DIR = os.path.join(BASE_DIR, "model")
 
@@ -54,52 +70,83 @@ else:
     ]
 
     if missing_files:
-        st.error("The original model files are missing from the repository.")
-        st.write("The app expects these files inside the `model` folder:")
+        st.error(
+            "No trained uploaded-dataset model is available, "
+            "and the original model files are missing."
+        )
+
+        st.write("Expected original files:")
+
         for path in missing_files:
             st.code(os.path.relpath(path, BASE_DIR))
+
         st.info(
-            "Please ensure these files exist in the GitHub repository "
-            "under the model folder."
+            "Go to Dataset Upload, upload a dataset, select a target, "
+            "and click Train Model. Then return to this page."
         )
         st.stop()
 
-    model = joblib.load(MODEL_PATH)
-    X_test = pd.read_csv(X_TEST_PATH)
-    y_test = pd.read_csv(Y_TEST_PATH).squeeze()
-    feature_names = joblib.load(FEATURE_PATH)
+    try:
+        model = joblib.load(MODEL_PATH)
+        X_test = pd.read_csv(X_TEST_PATH)
+        y_test = pd.read_csv(Y_TEST_PATH).squeeze()
+        feature_names = joblib.load(FEATURE_PATH)
 
-    class_names = ["Benign", "Malignant"]
+    except Exception as e:
+        st.error(f"Could not load the original model: {e}")
+        st.stop()
+
     target_column = "diagnosis"
+    task = "Classification"
     model_source = "Original UCI Breast Cancer Model"
 
-# Validate test data
+# ============================================================
+# VALIDATE ACTIVE MODEL DATA
+# ============================================================
+
 if len(X_test) == 0:
     st.error("The test dataset contains no samples.")
     st.stop()
 
 if len(y_test) != len(X_test):
-    st.error("The test features and labels have different lengths.")
+    st.error("The test features and target labels have different lengths.")
     st.stop()
 
-# Active model information
+if not hasattr(model, "predict"):
+    st.error("The active model does not support prediction.")
+    st.stop()
+
+if list(X_test.columns) != list(feature_names):
+    st.warning(
+        "The test feature columns differ from the stored feature names. "
+        "Predictions will use the test data's current columns."
+    )
+
+# ============================================================
+# ACTIVE MODEL INFORMATION
+# ============================================================
+
 st.markdown("---")
 st.subheader("🤖 Active Model")
 
 info1, info2, info3 = st.columns(3)
 
-with info1:
-    st.metric("Model", type(model).__name__)
-
-with info2:
-    st.metric("Target", target_column)
-
-with info3:
-    st.metric("Features", len(feature_names))
+info1.metric("Model", type(model).__name__)
+info2.metric("Target", str(target_column))
+info3.metric("Features", f"{X_test.shape[1]:,}")
 
 st.caption(f"Currently using: **{model_source}**")
 
-# Select test sample
+if uploaded_model_available:
+    st.success(
+        "Uploaded dataset model detected. "
+        "This page is using the model you trained in Dataset Upload."
+    )
+
+# ============================================================
+# SELECT TEST SAMPLE
+# ============================================================
+
 st.markdown("---")
 st.subheader("🔢 Select Test Sample")
 
@@ -109,124 +156,116 @@ sample_index = st.number_input(
     max_value=len(X_test) - 1,
     value=0,
     step=1,
+    key="prediction_sample_index",
 )
 
 selected_sample = X_test.iloc[[int(sample_index)]]
 
-# Prediction
-prediction = model.predict(selected_sample)[0]
-probabilities = model.predict_proba(selected_sample)[0]
-actual = y_test.iloc[int(sample_index)]
+# ============================================================
+# MAKE PREDICTION
+# ============================================================
 
-model_classes = list(model.classes_)
+try:
+    prediction = model.predict(selected_sample)[0]
+    actual = y_test.iloc[int(sample_index)]
+except Exception as e:
+    st.error(f"Prediction failed: {e}")
+    st.stop()
 
-def get_class_label(class_value):
-    if uploaded_model_available:
-        class_index = model_classes.index(class_value)
-        if class_index < len(class_names):
-            return str(class_names[class_index])
-        return str(class_value)
+# ============================================================
+# DISPLAY CLASSIFICATION OR REGRESSION
+# ============================================================
 
-    if int(class_value) == 0:
-        return "Benign"
-    return "Malignant"
-
-actual_class = get_class_label(actual)
-predicted_class = get_class_label(prediction)
-confidence = max(probabilities) * 100
-
-# Prediction result
 st.markdown("---")
 st.subheader("🎯 Prediction Result")
 
-col1, col2, col3 = st.columns(3)
+if task == "Classification":
 
-with col1:
-    st.metric("Actual Class", actual_class)
+    col1, col2 = st.columns(2)
+    col1.metric("Actual Class", str(actual))
+    col2.metric("Predicted Class", str(prediction))
 
-with col2:
-    st.metric("Predicted Class", predicted_class)
+    if hasattr(model, "predict_proba"):
+        try:
+            probabilities = model.predict_proba(selected_sample)[0]
+            model_classes = list(model.classes_)
 
-with col3:
-    st.metric("Confidence", f"{confidence:.2f}%")
+            probability_df = pd.DataFrame({
+                "Class": [str(c) for c in model_classes],
+                "Probability (%)": [
+                    round(float(p) * 100, 2)
+                    for p in probabilities
+                ],
+            })
 
-# Class probabilities
-st.markdown("---")
-st.subheader("📈 Class Probabilities")
+            st.markdown("---")
+            st.subheader("📈 Class Probabilities")
 
-probability_data = []
+            st.dataframe(
+                probability_df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-for class_index, class_value in enumerate(model_classes):
-    if uploaded_model_available and class_index < len(class_names):
-        label = str(class_names[class_index])
-    elif not uploaded_model_available:
-        label = get_class_label(class_value)
-    else:
-        label = str(class_value)
+            st.bar_chart(
+                probability_df.set_index("Class")
+            )
 
-    probability_data.append({
-        "Class": label,
-        "Probability (%)": round(
-            float(probabilities[class_index]) * 100, 2
-        ),
-    })
+            st.caption(
+                "The highest class probability is not a guarantee "
+                "that the prediction is correct."
+            )
 
-probability_df = pd.DataFrame(probability_data)
+        except Exception as e:
+            st.warning(f"Class probabilities are unavailable: {e}")
 
-st.dataframe(
-    probability_df,
-    width="stretch",
-    hide_index=True,
-)
+else:
 
-st.bar_chart(
-    probability_df.set_index("Class")
-)
+    col1, col2 = st.columns(2)
+    col1.metric("Actual Value", f"{float(actual):.4f}")
+    col2.metric("Predicted Value", f"{float(prediction):.4f}")
 
-# Selected sample features
+    st.caption(
+        "This is a regression prediction. Classification probabilities "
+        "are not applicable."
+    )
+
+# ============================================================
+# SHOW INPUT FEATURES
+# ============================================================
+
 st.markdown("---")
 st.subheader("🔍 Selected Sample Features")
 
 st.dataframe(
-    selected_sample,
-    width="stretch",
+    selected_sample.T.rename(columns={selected_sample.index[0]: "Value"}),
+    use_container_width=True,
 )
 
-# XAI connection
+# ============================================================
+# XAI CONNECTION
+# ============================================================
+
 st.markdown("---")
 st.subheader("🧠 XAI Connection")
 
 st.info(
     """
-    This prediction is produced by the active machine learning model.
+    The active model generates the prediction from the selected input
+    features. Feature importance can help describe overall model behavior,
+    while local explanation methods can help examine an individual
+    prediction.
 
-    The next XAI stage explains why the model made this prediction
-    by examining the contribution of individual input features using SHAP.
-
-    If an uploaded dataset has been trained, this page uses that
-    uploaded dataset's model.
+    Feature importance and model explanations do not prove causality
+    and do not guarantee that the prediction is correct.
     """
 )
 
-# Dataset status
-if uploaded_model_available:
-    st.success(
-        f"""
-        **Uploaded dataset model is active.**
+# ============================================================
+# FINAL STATUS
+# ============================================================
 
-        Target: `{target_column}`
-
-        Features: `{len(feature_names)}`
-
-        Test samples: `{len(X_test)}`
-        """
-    )
-else:
-    st.info(
-        """
-        **Original project model is active.**
-
-        Upload and train a dataset from the
-        **📂 Dataset Upload** page to switch to the uploaded model.
-        """
-    )
+st.caption(
+    f"Target: {target_column} | Task: {task} | "
+    f"Test samples: {len(X_test):,}"
+)
