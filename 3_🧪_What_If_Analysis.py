@@ -1,513 +1,394 @@
+```python
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-
-# ==========================================
-# PAGE CONFIGURATION
-# ==========================================
-
-st.title("🧪 What-If Analysis")
-
-st.markdown(
-    "Change the value of a feature and observe how the "
-    "machine learning model's prediction probability changes."
+st.set_page_config(
+    page_title="What-If Analysis | XAI",
+    page_icon="🧪",
+    layout="wide"
 )
 
-st.markdown("---")
+st.title("🧪 What-If Analysis")
+st.write(
+    "Change the value of a feature and observe how the "
+    "machine learning model's prediction changes."
+)
 
+st.divider()
 
-# ==========================================
-# CHECK ACTIVE MODEL
-# ==========================================
+# --------------------------------------------------
+# 1. GET THE TRAINED DATASET MODEL
+# --------------------------------------------------
 
-if not st.session_state.get("model_trained", False):
+dataset_model = st.session_state.get("dataset_model")
+model_trained = st.session_state.get(
+    "dataset_model_trained", False
+)
 
+if not model_trained or not isinstance(dataset_model, dict):
     st.warning(
         "No uploaded dataset model is currently active."
     )
-
     st.info(
-        "Please go to the 📂 Dataset Upload page, "
-        "upload your dataset, select the target column, "
-        "and train the model first."
+        "Go to the 📂 Dataset Upload page, upload your "
+        "dataset, select the target column, and train "
+        "the model first."
     )
-
     st.stop()
 
+model = dataset_model.get("model")
+task = dataset_model.get("task")
+feature_names = dataset_model.get("feature_names", [])
+X_train = dataset_model.get("X_train")
 
-# ==========================================
-# LOAD ACTIVE MODEL FROM SESSION STATE
-# ==========================================
-
-model = st.session_state["uploaded_model"]
-
-X_test = st.session_state["uploaded_X_test"]
-
-y_test = st.session_state["uploaded_y_test"]
-
-feature_names = st.session_state["uploaded_feature_names"]
-
-target_column = st.session_state.get(
-    "uploaded_target_column",
-    "Target"
-)
-
-
-# ==========================================
-# MODEL INFORMATION
-# ==========================================
-
-st.success("Using the currently trained uploaded-dataset model.")
-
-info_col1, info_col2, info_col3 = st.columns(3)
-
-with info_col1:
-    st.metric(
-        "Model",
-        "Random Forest"
-    )
-
-with info_col2:
-    st.metric(
-        "Features",
-        len(feature_names)
-    )
-
-with info_col3:
-    st.metric(
-        "Test Samples",
-        len(X_test)
-    )
-
-
-st.caption(
-    f"Target column: **{target_column}**"
-)
-
-st.markdown("---")
-
-
-# ==========================================
-# SELECT TEST SAMPLE
-# ==========================================
-
-st.subheader("🔢 Select Test Sample")
-
-sample_index = st.number_input(
-    "Select test sample index",
-    min_value=0,
-    max_value=len(X_test) - 1,
-    value=0,
-    step=1
-)
-
-selected_sample = X_test.iloc[[sample_index]].copy()
-
-actual_class = y_test.iloc[sample_index]
-
-
-# ==========================================
-# ORIGINAL PREDICTION
-# ==========================================
-
-original_prediction = model.predict(
-    selected_sample
-)[0]
-
-original_probabilities = model.predict_proba(
-    selected_sample
-)[0]
-
-class_labels = list(model.classes_)
-
-original_prediction_index = list(
-    model.classes_
-).index(original_prediction)
-
-original_prediction_probability = (
-    original_probabilities[original_prediction_index] * 100
-)
-
-
-# ==========================================
-# SELECT FEATURE
-# ==========================================
-
-st.subheader("🎛️ Select Feature to Modify")
-
-selected_feature = st.selectbox(
-    "Choose a feature:",
-    feature_names
-)
-
-
-# ==========================================
-# ORIGINAL VALUE
-# ==========================================
-
-original_value = selected_sample[
-    selected_feature
-].iloc[0]
-
-
-try:
-    original_value = float(original_value)
-except (TypeError, ValueError):
+if model is None or X_train is None or not feature_names:
     st.error(
-        "The selected feature is not numeric and "
-        "cannot be modified using this What-If analysis."
+        "The trained model is missing required information. "
+        "Please train the model again on the Dataset Upload page."
     )
     st.stop()
 
-
-# ==========================================
-# MODIFIED VALUE
-# ==========================================
-
-modified_value = st.number_input(
-    f"Modified value for {selected_feature}",
-    value=float(original_value),
-    format="%.4f"
-)
-
-
-st.markdown("---")
-
-
-# ==========================================
-# ORIGINAL FEATURE VALUE
-# ==========================================
-
-st.subheader("📌 Original Feature Value")
-
-st.write(
-    f"Original value of **{selected_feature}**: "
-    f"**{original_value:.4f}**"
-)
-
-
-# ==========================================
-# CREATE MODIFIED SAMPLE
-# ==========================================
-
-modified_sample = selected_sample.copy()
-
-modified_sample.loc[
-    modified_sample.index[0],
-    selected_feature
-] = modified_value
-
-
-# ==========================================
-# MODIFIED PREDICTION
-# ==========================================
-
-modified_prediction = model.predict(
-    modified_sample
-)[0]
-
-modified_probabilities = model.predict_proba(
-    modified_sample
-)[0]
-
-modified_prediction_index = list(
-    model.classes_
-).index(modified_prediction)
-
-modified_prediction_probability = (
-    modified_probabilities[modified_prediction_index] * 100
-)
-
-
-# ==========================================
-# CALCULATE PROBABILITY CHANGE
-# ==========================================
-
-probability_change = (
-    modified_prediction_probability
-    - original_prediction_probability
-)
-
-
-# ==========================================
-# CLASS NAMES
-# ==========================================
-
-def format_class_name(value):
-    """
-    Convert class value into a readable label.
-    """
-
-    return str(value)
-
-
-original_class_name = format_class_name(
-    original_prediction
-)
-
-modified_class_name = format_class_name(
-    modified_prediction
-)
-
-actual_class_name = format_class_name(
-    actual_class
-)
-
-
-# ==========================================
-# PREDICTION SUMMARY
-# ==========================================
-
-st.markdown("---")
-
-st.subheader("🔮 Prediction Summary")
-
-summary_col1, summary_col2, summary_col3 = st.columns(3)
-
-with summary_col1:
-
-    st.write("**Actual Class**")
-
-    st.write(
-        f"### {actual_class_name}"
+# Ensure the training features are in DataFrame format.
+if isinstance(X_train, pd.DataFrame):
+    training_data = X_train.copy()
+else:
+    training_data = pd.DataFrame(
+        X_train, columns=list(feature_names)
     )
 
-with summary_col2:
+# Match the model's feature order.
+feature_names = list(feature_names)
 
-    st.write("**Original Prediction**")
-
-    st.write(
-        f"### {original_class_name}"
+if len(feature_names) != training_data.shape[1]:
+    st.error(
+        "The feature names do not match the training data. "
+        "Please train the model again."
     )
+    st.stop()
 
-with summary_col3:
+training_data = training_data[feature_names]
 
-    st.write("**Modified Prediction**")
+# --------------------------------------------------
+# 2. SHOW MODEL INFORMATION
+# --------------------------------------------------
 
-    st.write(
-        f"### {modified_class_name}"
-    )
+col1, col2, col3 = st.columns(3)
 
+with col1:
+    st.metric("Task", str(task).title())
 
-# ==========================================
-# PROBABILITY COMPARISON
-# ==========================================
+with col2:
+    st.metric("Input Features", len(feature_names))
 
-st.markdown("---")
+with col3:
+    st.metric("Training Samples", len(training_data))
 
-st.subheader("📊 Prediction Probability Comparison")
+st.divider()
 
-comparison_col1, comparison_col2 = st.columns(2)
+# --------------------------------------------------
+# 3. CREATE FEATURE INPUTS
+# --------------------------------------------------
 
-
-with comparison_col1:
-
-    st.markdown("### Original")
-
-    st.metric(
-        "Prediction Probability",
-        f"{original_prediction_probability:.2f}%"
-    )
-
-    st.write(
-        f"Prediction: **{original_class_name}**"
-    )
-
-
-with comparison_col2:
-
-    st.markdown("### Modified")
-
-    st.metric(
-        "Prediction Probability",
-        f"{modified_prediction_probability:.2f}%"
-    )
-
-    st.write(
-        f"Prediction: **{modified_class_name}**"
-    )
-
-
-# ==========================================
-# PROBABILITY CHANGE
-# ==========================================
-
-st.markdown("---")
-
-st.subheader("📈 Change in Prediction Probability")
-
-st.metric(
-    "Change",
-    f"{probability_change:+.2f} percentage points"
-)
-
-
-# ==========================================
-# ALL CLASS PROBABILITIES
-# ==========================================
-
-st.markdown("---")
-
-st.subheader("📋 Class Probability Details")
-
-probability_data = pd.DataFrame(
-    {
-        "Class": [
-            format_class_name(class_value)
-            for class_value in class_labels
-        ],
-        "Original Probability (%)": [
-            probability * 100
-            for probability in original_probabilities
-        ],
-        "Modified Probability (%)": [
-            probability * 100
-            for probability in modified_probabilities
-        ]
-    }
-)
-
-probability_data["Change (percentage points)"] = (
-    probability_data["Modified Probability (%)"]
-    - probability_data["Original Probability (%)"]
-)
-
-st.dataframe(
-    probability_data,
-    width="stretch"
-)
-
-
-# ==========================================
-# FEATURE COMPARISON
-# ==========================================
-
-st.markdown("---")
-
-st.subheader("🔎 Feature Change")
-
-feature_comparison = pd.DataFrame(
-    {
-        "Value": [
-            original_value,
-            modified_value
-        ]
-    },
-    index=[
-        "Original",
-        "Modified"
-    ]
-)
-
-st.dataframe(
-    feature_comparison,
-    width="stretch"
-)
-
-
-# ==========================================
-# COMPLETE SAMPLE COMPARISON
-# ==========================================
-
-with st.expander(
-    "📋 View Complete Original and Modified Sample"
-):
-
-    sample_comparison = pd.DataFrame(
-        {
-            "Original": selected_sample.iloc[0],
-            "Modified": modified_sample.iloc[0]
-        }
-    )
-
-    sample_comparison["Change"] = (
-        sample_comparison["Modified"]
-        - sample_comparison["Original"]
-    )
-
-    st.dataframe(
-        sample_comparison,
-        width="stretch"
-    )
-
-
-# ==========================================
-# EXPLANATION
-# ==========================================
-
-st.markdown("---")
-
-st.subheader("💡 How to Interpret This")
-
-st.write(
-    f"""
-    The What-If analysis changes only the selected feature
-    **{selected_feature}** while keeping the other input
-    features unchanged.
-
-    The model then makes a new prediction using the modified
-    input.
-
-    The difference between the original and modified
-    prediction probabilities shows how the trained model
-    responds to this controlled change.
-    """
-)
-
-
-# ==========================================
-# XAI CONNECTION
-# ==========================================
-
-st.info(
-    "This is an XAI technique for exploring model behaviour. "
-    "It shows how changing an input value can affect the "
-    "model's prediction. The result should not be interpreted "
-    "as proof that the feature causes the real-world outcome."
-)
-
-
-# ==========================================
-# TECHNICAL NOTE
-# ==========================================
-
-with st.expander("🔧 Technical Details"):
-
-    st.write(
-        f"""
-        **Model:** Random Forest
-
-        **Target:** {target_column}
-
-        **Number of input features:** {len(feature_names)}
-
-        **Selected test sample:** {sample_index}
-
-        **Modified feature:** {selected_feature}
-
-        **Original value:** {original_value:.4f}
-
-        **Modified value:** {modified_value:.4f}
-
-        The model prediction is calculated twice:
-        once using the original sample and once using the
-        modified sample.
-
-        Only the selected feature is changed during the
-        What-If experiment.
-        """
-    )
-
-
-# ==========================================
-# DISCLAIMER
-# ==========================================
-
-st.markdown("---")
-
+st.subheader("🎛️ Change Feature Values")
 st.caption(
-    "Note: What-If analysis demonstrates model behaviour "
-    "under controlled input changes. It does not establish "
-    "causation and should not be treated as a real-world "
-    "decision by itself."
+    "The initial values are taken from a typical training "
+    "sample. Adjust the controls and click Analyze."
 )
+
+# Use the median training row as a reasonable starting point.
+initial_row = training_data.median(numeric_only=True)
+
+# Fill any non-numeric feature defaults using the first row.
+if not training_data.empty:
+    first_row = training_data.iloc[0]
+
+    for feature in feature_names:
+        if feature not in initial_row.index:
+            initial_row.loc[feature] = first_row[feature]
+
+# Keep the input controls in a form so changes are analyzed
+# only when the user clicks the button.
+with st.form("what_if_form"):
+    edited_values = {}
+    columns = st.columns(2)
+
+    for index, feature in enumerate(feature_names):
+        with columns[index % 2]:
+            series = training_data[feature]
+            numeric_series = pd.to_numeric(
+                series, errors="coerce"
+            )
+            is_numeric = numeric_series.notna().all()
+
+            if is_numeric:
+                minimum = float(numeric_series.min())
+                maximum = float(numeric_series.max())
+                default_value = float(
+                    numeric_series.median()
+                )
+
+                if not np.isfinite(minimum) or not np.isfinite(maximum):
+                    edited_values[feature] = default_value
+                elif minimum == maximum:
+                    edited_values[feature] = st.number_input(
+                        feature,
+                        value=default_value,
+                        key=f"whatif_{feature}",
+                        help="This feature has a constant training value."
+                    )
+                else:
+                    edited_values[feature] = st.slider(
+                        feature,
+                        min_value=minimum,
+                        max_value=maximum,
+                        value=min(
+                            max(default_value, minimum), maximum
+                        ),
+                        key=f"whatif_{feature}"
+                    )
+            else:
+                choices = series.dropna().unique().tolist()
+
+                if not choices:
+                    st.warning(
+                        f"No valid training values for {feature}."
+                    )
+                    edited_values[feature] = None
+                else:
+                    edited_values[feature] = st.selectbox(
+                        feature,
+                        options=choices,
+                        key=f"whatif_{feature}"
+                    )
+
+    analyze = st.form_submit_button(
+        "🔍 Analyze Prediction",
+        use_container_width=True
+    )
+
+# --------------------------------------------------
+# 4. MAKE THE PREDICTION
+# --------------------------------------------------
+
+if analyze:
+    input_df = pd.DataFrame(
+        [edited_values],
+        columns=feature_names
+    )
+
+    st.divider()
+    st.subheader("📊 Analysis Results")
+
+    try:
+        prediction = model.predict(input_df)[0]
+
+        if task == "classification":
+            classes = getattr(model, "classes_", None)
+
+            # Most sklearn classifiers expose predict_proba.
+            if hasattr(model, "predict_proba"):
+                probabilities = model.predict_proba(input_df)[0]
+
+                probability_df = pd.DataFrame({
+                    "Class": [
+                        str(c) for c in classes
+                    ] if classes is not None else [
+                        f"Class {i}" for i in range(len(probabilities))
+                    ],
+                    "Probability": probabilities
+                })
+
+                probability_df["Probability (%)"] = (
+                    probability_df["Probability"] * 100
+                ).round(2)
+
+                left, right = st.columns([1, 1])
+
+                with left:
+                    st.markdown("#### Predicted Class")
+                    st.success(str(prediction))
+                    st.caption(
+                        "This is the model's prediction, not a "
+                        "guarantee about the real-world outcome."
+                    )
+
+                with right:
+                    st.markdown("#### Class Probabilities")
+                    st.dataframe(
+                        probability_df[
+                            ["Class", "Probability (%)"]
+                        ],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                st.markdown("#### Probability Chart")
+                chart_df = probability_df.set_index("Class")[
+                    "Probability (%)"
+                ]
+                st.bar_chart(chart_df)
+
+                # Show how confident the model is in the predicted class.
+                if classes is not None:
+                    class_list = list(classes)
+                    if prediction in class_list:
+                        pred_index = class_list.index(prediction)
+                        confidence = float(
+                            probabilities[pred_index] * 100
+                        )
+                        st.metric(
+                            "Probability for Predicted Class",
+                            f"{confidence:.2f}%"
+                        )
+
+            else:
+                st.markdown("#### Predicted Class")
+                st.success(str(prediction))
+                st.info(
+                    "This model does not support predict_proba(), "
+                    "so class probabilities cannot be displayed."
+                )
+
+        else:
+            prediction_value = float(prediction)
+            st.metric(
+                "Predicted Value",
+                f"{prediction_value:.4f}"
+            )
+
+            st.caption(
+                "This is the model's predicted numeric value."
+            )
+
+        # --------------------------------------------------
+        # 5. COMPARE INPUT WITH THE TYPICAL TRAINING VALUES
+        # --------------------------------------------------
+
+        st.divider()
+        st.subheader("🔎 Feature Comparison")
+
+        comparison_rows = []
+
+        for feature in feature_names:
+            try:
+                baseline = float(
+                    pd.to_numeric(
+                        training_data[feature],
+                        errors="coerce"
+                    ).median()
+                )
+                current = float(edited_values[feature])
+
+                comparison_rows.append({
+                    "Feature": feature,
+                    "Training Median": baseline,
+                    "Your Value": current,
+                    "Difference": current - baseline
+                })
+            except (TypeError, ValueError):
+                comparison_rows.append({
+                    "Feature": feature,
+                    "Training Median": "Categorical",
+                    "Your Value": str(edited_values[feature]),
+                    "Difference": "Not applicable"
+                })
+
+        comparison_df = pd.DataFrame(comparison_rows)
+
+        st.dataframe(
+            comparison_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # --------------------------------------------------
+        # 6. MODEL FEATURE IMPORTANCE, IF AVAILABLE
+        # --------------------------------------------------
+
+        if hasattr(model, "feature_importances_"):
+            st.divider()
+            st.subheader("🌟 Global Feature Importance")
+
+            importance_df = pd.DataFrame({
+                "Feature": feature_names,
+                "Importance": model.feature_importances_
+            }).sort_values(
+                "Importance", ascending=False
+            )
+
+            st.bar_chart(
+                importance_df.head(10).set_index("Feature")[
+                    "Importance"
+                ]
+            )
+
+            st.caption(
+                "These values describe overall model importance. "
+                "They are not a causal explanation of this individual prediction."
+            )
+
+        elif hasattr(model, "coef_"):
+            st.divider()
+            st.subheader("🌟 Model Coefficients")
+
+            coefficients = np.asarray(model.coef_)
+
+            if coefficients.ndim == 1:
+                coef_values = coefficients
+            else:
+                # For multiclass linear models, show the first class's coefficients.
+                coef_values = coefficients[0]
+
+            if len(coef_values) == len(feature_names):
+                coefficient_df = pd.DataFrame({
+                    "Feature": feature_names,
+                    "Coefficient": coef_values
+                })
+                coefficient_df["Absolute Coefficient"] = (
+                    coefficient_df["Coefficient"].abs()
+                )
+                coefficient_df = coefficient_df.sort_values(
+                    "Absolute Coefficient", ascending=False
+                )
+
+                st.bar_chart(
+                    coefficient_df.head(10).set_index("Feature")[
+                        "Coefficient"
+                    ]
+                )
+
+                st.caption(
+                    "Coefficient direction and magnitude depend on "
+                    "the model and feature scaling."
+                )
+
+    except Exception as error:
+        st.error(
+            "The model could not analyze these inputs. "
+            "Check that the Dataset Upload page used the same "
+            "feature columns and preprocessing."
+        )
+        st.code(str(error))
+
+# --------------------------------------------------
+# 7. EXPLANATION NOTE
+# --------------------------------------------------
+
+st.divider()
+st.subheader("💡 How to Interpret What-If Analysis")
+
+st.write(
+    """
+    - Change one or more feature values.
+    - Click **Analyze Prediction** to run the model again.
+    - Compare the new predicted class, probability, or numeric value.
+    - Repeat with different values to observe how the output changes.
+
+    **Important:** A changed prediction shows how this model responds
+    to the supplied inputs. It does not prove that changing a feature
+    causes a real-world outcome, and it does not by itself establish
+    why the model made its original prediction.
+    """
+)
+```
