@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 from torchvision.models import ResNet18_Weights
 
+
 st.set_page_config(
     page_title="Image Analysis | XAI",
     page_icon="🖼️",
@@ -20,6 +21,7 @@ st.write(
     "influenced the model's prediction using Grad-CAM."
 )
 
+
 @st.cache_resource
 def load_model():
     weights = ResNet18_Weights.DEFAULT
@@ -30,19 +32,20 @@ def load_model():
 
 uploaded_image = st.file_uploader(
     "Upload an image",
-    type=["png", "jpg", "jpeg"]
+    type=["png", "jpg", "jpeg"],
+    help="Upload a clear image of a common object."
 )
+
 
 if uploaded_image is not None:
     try:
         image = Image.open(uploaded_image).convert("RGB")
 
         st.subheader("Uploaded Image")
-        st.image(image, use_container_width=True)
+        st.image(image, caption="Original image", width="stretch")
 
         with st.spinner("Loading model and analyzing image..."):
             model, weights = load_model()
-
             input_tensor = weights.transforms()(image).unsqueeze(0)
 
             activations = {}
@@ -67,34 +70,47 @@ if uploaded_image is not None:
                 with torch.enable_grad():
                     output = model(input_tensor)
                     probabilities = torch.softmax(output, dim=1)
-                    class_index = int(output.argmax(dim=1).item())
+
+                    class_index = int(
+                        output.argmax(dim=1).item()
+                    )
 
                     model.zero_grad()
                     output[0, class_index].backward()
+
             finally:
                 forward_handle.remove()
                 backward_handle.remove()
 
-            confidence = probabilities[0, class_index].item() * 100
+            # Main prediction
+            confidence = (
+                probabilities[0, class_index].item() * 100
+            )
             class_name = weights.meta["categories"][class_index]
 
+            # Top 5 predictions
             top5_probabilities, top5_indices = torch.topk(
                 probabilities[0], k=5
             )
 
             top5_predictions = [
                 {
+                    "Rank": rank,
                     "Class": weights.meta["categories"][int(index)],
                     "Confidence (%)": round(
                         float(probability) * 100, 2
                     )
                 }
-                for probability, index in zip(
-                    top5_probabilities.tolist(),
-                    top5_indices.tolist()
+                for rank, (probability, index) in enumerate(
+                    zip(
+                        top5_probabilities.tolist(),
+                        top5_indices.tolist()
+                    ),
+                    start=1
                 )
             ]
 
+            # Grad-CAM calculation
             feature_maps = activations["value"]
             grads = gradients["value"]
 
@@ -116,33 +132,45 @@ if uploaded_image is not None:
             )
 
             cam = cam[0, 0].detach().cpu().numpy()
-            cam_min, cam_max = cam.min(), cam.max()
+
+            cam_min = cam.min()
+            cam_max = cam.max()
 
             if cam_max > cam_min:
                 cam = (cam - cam_min) / (cam_max - cam_min)
             else:
                 cam = np.zeros_like(cam)
 
+        # Display prediction
         st.subheader("Prediction")
         st.success(f"Predicted class: **{class_name}**")
-        st.metric("Model confidence", f"{confidence:.2f}%")
 
-        st.subheader("Top 5 Predictions")
-        st.dataframe(
-            top5_predictions,
-            hide_index=True,
-            use_container_width=True
+        st.metric(
+            "Model confidence",
+            f"{confidence:.2f}%"
         )
 
         st.caption(
-            "Predictions come from a pretrained ImageNet model. "
-            "Confidence scores are not guarantees of correctness."
+            "This pretrained model recognizes objects from ImageNet's "
+            "1000 categories. Confidence is not a guarantee of correctness."
         )
 
+        # Display Top 5
+        st.subheader("Top 5 Predictions")
+
+        st.dataframe(
+            top5_predictions,
+            hide_index=True,
+            width="stretch"
+        )
+
+        # Display explanation
         st.subheader("Grad-CAM Explanation")
+
         st.write(
             "The heatmap highlights image regions that influenced "
-            "the selected class score. It is an approximate explanation."
+            "the selected class score. It provides an approximate "
+            "visual explanation, not proof of correct reasoning."
         )
 
         col1, col2 = st.columns(2)
@@ -151,19 +179,21 @@ if uploaded_image is not None:
             st.image(
                 image,
                 caption="Original image",
-                use_container_width=True
+                width="stretch"
             )
 
         with col2:
             fig, ax = plt.subplots()
+
             ax.imshow(image)
             ax.imshow(cam, cmap="jet", alpha=0.45)
             ax.axis("off")
+
             st.pyplot(fig)
             plt.close(fig)
 
-    except Exception:
-        st.error(
-            "Image analysis failed. Please check the uploaded image "
-            "and the app logs for details."
-        )
+    except Exception as error:
+        st.error("Image analysis failed.")
+
+        with st.expander("View error details"):
+            st.code(str(error))
