@@ -380,11 +380,19 @@ pages = [
         icon="📚"
     ),
 
+   
     st.Page(
         "6_📂_Dataset_Upload.py",
         title="Dataset Upload",
         icon="📂"
+    ),
+
+    st.Page(
+        "7_🖼️_Image_Analysis.py",
+        title="Image Analysis",
+        icon="🖼️"
     )
+
 ]
 
 
