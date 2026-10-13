@@ -1,4 +1,4 @@
-```python
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -645,4 +645,4 @@ st.info(
     "For a new dataset or a changed target column, retrain the model on "
     "Dataset Upload before using these explanations."
 )
-```
+
