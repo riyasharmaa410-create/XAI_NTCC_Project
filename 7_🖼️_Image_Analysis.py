@@ -1,7 +1,6 @@
 
 import streamlit as st
 import torch
-import torchvision.transforms as transforms
 import torchvision.models as models
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,6 +27,7 @@ def load_model():
     model.eval()
     return model, weights
 
+
 uploaded_image = st.file_uploader(
     "Upload an image",
     type=["png", "jpg", "jpeg"]
@@ -43,8 +43,7 @@ if uploaded_image is not None:
         with st.spinner("Loading model and analyzing image..."):
             model, weights = load_model()
 
-            preprocess = weights.transforms()
-            input_tensor = preprocess(image).unsqueeze(0)
+            input_tensor = weights.transforms()(image).unsqueeze(0)
 
             activations = {}
             gradients = {}
@@ -56,6 +55,7 @@ if uploaded_image is not None:
                 gradients["value"] = grad_output[0]
 
             target_layer = model.layer4[-1]
+
             forward_handle = target_layer.register_forward_hook(
                 save_activation
             )
@@ -63,49 +63,51 @@ if uploaded_image is not None:
                 save_gradient
             )
 
-            input_tensor.requires_grad_(True)
+            try:
+                with torch.enable_grad():
+                    output = model(input_tensor)
+                    probabilities = torch.softmax(output, dim=1)
+                    class_index = int(output.argmax(dim=1).item())
 
-            with torch.enable_grad():
-                output = model(input_tensor)
-                probabilities = torch.softmax(output, dim=1)
-                class_index = int(output.argmax(dim=1).item())
+                    model.zero_grad()
+                    output[0, class_index].backward()
+            finally:
+                forward_handle.remove()
+                backward_handle.remove()
 
-                model.zero_grad()
-                output[0, class_index].backward()
+            confidence = probabilities[0, class_index].item() * 100
+            class_name = weights.meta["categories"][class_index]
 
-            forward_handle.remove()
-            backward_handle.remove()
+            top5_probabilities, top5_indices = torch.topk(
+                probabilities[0], k=5
+            )
 
-            
-confidence = probabilities[0, class_index].item() * 100
-class_name = weights.meta["categories"][class_index]
-
-top5_probabilities, top5_indices = torch.topk(
-    probabilities[0], k=5
-)
-
-top5_predictions = [
-    {
-        "Class": weights.meta["categories"][int(index)],
-        "Confidence (%)": round(float(probability) * 100, 2)
-    }
-    for probability, index in zip(
-        top5_probabilities.tolist(),
-        top5_indices.tolist()
-    )
-]
-
+            top5_predictions = [
+                {
+                    "Class": weights.meta["categories"][int(index)],
+                    "Confidence (%)": round(
+                        float(probability) * 100, 2
+                    )
+                }
+                for probability, index in zip(
+                    top5_probabilities.tolist(),
+                    top5_indices.tolist()
+                )
+            ]
 
             feature_maps = activations["value"]
             grads = gradients["value"]
 
-            channel_weights = grads.mean(dim=(2, 3), keepdim=True)
+            channel_weights = grads.mean(
+                dim=(2, 3), keepdim=True
+            )
 
             cam = (
                 channel_weights * feature_maps
             ).sum(dim=1, keepdim=True)
 
             cam = torch.relu(cam)
+
             cam = torch.nn.functional.interpolate(
                 cam,
                 size=(image.height, image.width),
@@ -125,22 +127,32 @@ top5_predictions = [
         st.success(f"Predicted class: **{class_name}**")
         st.metric("Model confidence", f"{confidence:.2f}%")
 
+        st.subheader("Top 5 Predictions")
+        st.dataframe(
+            top5_predictions,
+            hide_index=True,
+            use_container_width=True
+        )
+
         st.caption(
-            "This is a prediction from a pretrained ImageNet model. "
-            "Confidence is not a guarantee that the prediction is correct."
+            "Predictions come from a pretrained ImageNet model. "
+            "Confidence scores are not guarantees of correctness."
         )
 
         st.subheader("Grad-CAM Explanation")
         st.write(
-            "The heatmap highlights regions that contributed to the "
-            "selected class score. Warmer colors generally indicate "
-            "stronger influence in this visualization."
+            "The heatmap highlights image regions that influenced "
+            "the selected class score. It is an approximate explanation."
         )
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.image(image, caption="Original image", use_container_width=True)
+            st.image(
+                image,
+                caption="Original image",
+                use_container_width=True
+            )
 
         with col2:
             fig, ax = plt.subplots()
@@ -150,6 +162,8 @@ top5_predictions = [
             st.pyplot(fig)
             plt.close(fig)
 
-    except Exception as e:
-        st.error("Image analysis failed.")
-        st.exception(e)
+    except Exception:
+        st.error(
+            "Image analysis failed. Please check the uploaded image "
+            "and the app logs for details."
+        )
