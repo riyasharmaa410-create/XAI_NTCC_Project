@@ -387,12 +387,6 @@ pages = [
         icon="📂"
     ),
 
-    st.Page(
-        "7_🖼️_Image_Analysis.py",
-        title="Image Analysis",
-        icon="🖼️"
-    )
-
 ]
 
 
