@@ -65,7 +65,9 @@ if not model_available:
     st.stop()
 
 model = uploaded_results["model"]
-task = uploaded_results["task"]
+
+task = str(uploaded_results["task"]).strip().lower()
+
 target_column = uploaded_results["target"]
 feature_names = list(uploaded_results["feature_names"])
 X_test = uploaded_results["X_test"].copy()
